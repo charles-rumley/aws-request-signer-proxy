@@ -10,8 +10,9 @@ import io.ticofab.AwsSigner
 import play.api.http.HttpEntity
 import play.api.libs.ws._
 import play.api.mvc._
-import com.netaporter.uri.Uri
+import com.netaporter.uri.{Uri, encoding}
 import com.netaporter.uri.Uri.parse
+import com.netaporter.uri.config.UriConfig
 import com.netaporter.uri.dsl._
 import play.api.libs.streams.Accumulator
 import play.utils.UriEncoding
@@ -20,6 +21,8 @@ import scala.concurrent.{Await, Future}
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration.Duration
 import scala.io.Source
+import com.netaporter.uri.dsl._
+import com.netaporter.uri.encoding._
 
 @Singleton
 class ProxyController @Inject()(ws: WSClient) extends Controller {
@@ -34,6 +37,8 @@ class ProxyController @Inject()(ws: WSClient) extends Controller {
 
   private def proxyRequest(incomingRequest: Request[RawBuffer]) = {
     val esDomain = Uri.parse("")
+    // we must encode asterisks in paths when we sign the requests
+    val signingEncodingConfig = UriConfig(encoder = percentEncode ++ '*')
     val queryStringParams = incomingRequest.queryString.map {
       // todo be careful, I may be erasing important data here
       case (key, values) => (key, values.head)
@@ -54,10 +59,20 @@ class ProxyController @Inject()(ws: WSClient) extends Controller {
       case None => EmptyBody
     }
 
+    val maybeUrl = for {
+      scheme <- esDomain.scheme
+      host <- esDomain.host
+    } yield {
+      // todo make sure I didn't inadvertently miss ports here
+      s"$scheme://$host${incomingRequest.path}"
+    }
+
+    // todo fail if we're missing parts of the URL
+
     // todo add query params
     // is Content-Type required?
     val outgoingRequest = ws
-        .url(esDomain / Uri.parse(incomingRequest.path))
+        .url(maybeUrl.get)
         .withMethod(incomingRequest.method)
         //        .withHeaders("Content-Type" -> "application/json") // this header should only be added if it doesn't exist yet
         .withHeaders(acceptableHeaders: _*)
@@ -84,14 +99,11 @@ class ProxyController @Inject()(ws: WSClient) extends Controller {
 
     def clock(): LocalDateTime = LocalDateTime.now(ZoneId.of("UTC"))
 
-    val s = Uri.parse(incomingRequest.path).toString
-    // todo EOD: figure out why the URI isn't encoding *
-
     // todo remove mention of ES in here
     // todo document "relative path" portion here
     val allSignedHeaders = AwsSigner(awsCredentialProvider, "us-east-1", "es", clock)
         .getSignedHeaders(
-          Uri.parse(incomingRequest.path).toString, // todo move this encoding logic to the signing plugin
+          Uri.parse(incomingRequest.path).toString(signingEncodingConfig), // todo move this encoding logic to the signing plugin
           incomingRequest.method,
           sortedQueryStringParameters,
           outgoingRequest.headers.map {
@@ -106,18 +118,15 @@ class ProxyController @Inject()(ws: WSClient) extends Controller {
   }
 
   private def streamResponse(request: WSRequest) = {
-    // always stream the response in case we're dealing with serious data
     request.stream.map {
       case StreamedResponse(response, body) =>
 
-        // Check that the response was successful
         val status = Status(response.status)
 
-        // Get the content type
         val contentType = response.headers.get("Content-Type").flatMap(_.headOption)
             .getOrElse("application/octet-stream")
 
-        // If there's a content length, send that, otherwise return the body chunked
+        // if there's a content length, send that, otherwise return the body in chunks
         response.headers.get("Content-Length") match {
           case Some(Seq(length)) =>
             status.sendEntity(HttpEntity.Streamed(body, Some(length.toLong), Some(contentType)))
