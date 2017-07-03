@@ -27,11 +27,8 @@ import com.netaporter.uri.encoding._
 @Singleton
 class ProxyController @Inject()(ws: WSClient) extends Controller {
 
-  def any(path: String) = Action.async(parse.raw) { implicit request =>
-    if (request.method == "PUT") {
-      println("We've got a putter!")
-    }
 
+  def any(path: String) = Action.async(parse.raw) { implicit request =>
     streamResponse(proxyRequest(request))
   }
 
