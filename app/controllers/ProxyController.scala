@@ -13,9 +13,10 @@ import com.netaporter.uri.config.UriConfig
 
 import scala.concurrent.ExecutionContext.Implicits.global
 import com.netaporter.uri.encoding._
+import play.api.Configuration
 
 @Singleton
-class ProxyController @Inject()(ws: WSClient) extends Controller {
+class ProxyController @Inject()(ws: WSClient, config: Configuration) extends Controller {
 
 
   def any(path: String) = Action.async(parse.raw) { implicit request =>
@@ -23,9 +24,10 @@ class ProxyController @Inject()(ws: WSClient) extends Controller {
   }
 
   private def proxyRequest(incomingRequest: Request[RawBuffer]) = {
-    val esDomain = Uri.parse("")
     // we must encode asterisks in paths when we sign the requests
     val signingEncodingConfig = UriConfig(encoder = percentEncode ++ '*')
+
+    val serviceDomain = Uri.parse(config.getString("signer.url").get)
     val queryStringParams = incomingRequest.queryString.map {
       // todo be careful, I may be erasing important data here
       case (key, values) => (key, values.head)
@@ -47,8 +49,8 @@ class ProxyController @Inject()(ws: WSClient) extends Controller {
     }
 
     val maybeUrl = for {
-      scheme <- esDomain.scheme
-      host <- esDomain.host
+      scheme <- serviceDomain.scheme
+      host <- serviceDomain.host
     } yield {
       // todo make sure I didn't inadvertently miss ports here
       s"$scheme://$host${incomingRequest.path}"
@@ -61,9 +63,8 @@ class ProxyController @Inject()(ws: WSClient) extends Controller {
     val outgoingRequest = ws
         .url(maybeUrl.get)
         .withMethod(incomingRequest.method)
-        //        .withHeaders("Content-Type" -> "application/json") // this header should only be added if it doesn't exist yet
         .withHeaders(acceptableHeaders: _*)
-        .withHeaders("Host" -> "")
+        .withHeaders("Host" -> serviceDomain.host.get)
         .withQueryString(queryStringParams: _*)
         .withBody(body)
 
@@ -73,8 +74,6 @@ class ProxyController @Inject()(ws: WSClient) extends Controller {
     // todo don't like this map->seq->map conversion
     // todo combine this ordering with the ordering above
     val sortedQueryStringParameters = queryStringParameters.toSeq.sortBy(_._1).toMap
-
-    val payload = maybeBody.map(_.toArray)
 
     if (incomingRequest.method.isEmpty) {
       throw new Exception("A method must be provided before signing the request!")
@@ -97,7 +96,7 @@ class ProxyController @Inject()(ws: WSClient) extends Controller {
             // todo clobber headers with multiple values
             case (key, values) => (key, values.head)
           },
-          payload
+          maybeBody.map(_.toArray)
         )
 
     val newHeaders = allSignedHeaders -- outgoingRequest.headers.keys
