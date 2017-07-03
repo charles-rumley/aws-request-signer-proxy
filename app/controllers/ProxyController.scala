@@ -3,25 +3,15 @@ package controllers
 import java.time.{LocalDateTime, ZoneId}
 import javax.inject._
 
-import akka.util.ByteString
 import com.amazonaws.auth.{AWSStaticCredentialsProvider, BasicAWSCredentials}
-import com.amazonaws.internal.StaticCredentialsProvider
 import io.ticofab.AwsSigner
 import play.api.http.HttpEntity
 import play.api.libs.ws._
 import play.api.mvc._
-import com.netaporter.uri.{Uri, encoding}
-import com.netaporter.uri.Uri.parse
+import com.netaporter.uri.Uri
 import com.netaporter.uri.config.UriConfig
-import com.netaporter.uri.dsl._
-import play.api.libs.streams.Accumulator
-import play.utils.UriEncoding
 
-import scala.concurrent.{Await, Future}
 import scala.concurrent.ExecutionContext.Implicits.global
-import scala.concurrent.duration.Duration
-import scala.io.Source
-import com.netaporter.uri.dsl._
 import com.netaporter.uri.encoding._
 
 @Singleton
