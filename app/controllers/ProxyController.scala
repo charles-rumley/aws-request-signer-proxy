@@ -27,21 +27,21 @@ class ProxyController @Inject()(ws: WSClient, configuration: Configuration) exte
     val signingEncodingConfig = UriConfig(encoder = percentEncode ++ '*')
 
     val queryStringParams = incomingRequest.queryString.map {
-      // todo be careful, I may be erasing important data here
+      // TODO: Review loss of multiple query string values caused by .head
       case (key, values) => (key, values.head)
     }.toSeq.sortBy(_._1)
 
-    // store max 1024 KB in memory todo review this limit
-    val maybeBody = incomingRequest.body.asBytes()
-
-    // we must override the Host header
-    // why figure out why I can't have Accept-Encoding
+    // TODO: we must override the Host header
+    // TODO: figure out why I can't have Accept-Encoding
     val acceptableHeaders = incomingRequest.headers.headers.filterNot {
       case (k, _) => Seq("Host", "Accept-Encoding").contains(k)
     }
 
+    // store max 1024 KB in memory todo review this limit
+    val maybeBody = incomingRequest.body.asBytes()
+
     val body: WSBody = maybeBody match {
-      // todo switch to using a StreamedBody so we don't have to hold anything in memory
+      // TODO: Switch to using a StreamedBody so we don't have to hold anything in memory
       case Some(b) => InMemoryBody(b)
       case None => EmptyBody
     }
@@ -51,13 +51,13 @@ class ProxyController @Inject()(ws: WSClient, configuration: Configuration) exte
       scheme <- serviceDomain.scheme
       host <- serviceDomain.host
     } yield {
-      // todo make sure I didn't inadvertently miss ports here
+      // TODO: Make sure I didn't inadvertently miss ports here
       s"$scheme://$host${incomingRequest.path}"
     }
 
-    // todo fail if we're missing parts of the URL
+    // TODO: Fail if we're missing parts of the URL
 
-    // todo add query params
+    // TODO: Add query params
     // is Content-Type required?
     val outgoingRequest = ws
         .url(maybeUrl.get)
@@ -67,11 +67,10 @@ class ProxyController @Inject()(ws: WSClient, configuration: Configuration) exte
         .withQueryString(queryStringParams: _*)
         .withBody(body)
 
-
     // drop query string params with multiple values
     val queryStringParameters = incomingRequest.queryString.mapValues(_.headOption.getOrElse(""))
-    // todo don't like this map->seq->map conversion
-    // todo combine this ordering with the ordering above
+    // TODO: Don't like this map->seq->map conversion
+    // TODO: Combine this ordering with the ordering above
     val sortedQueryStringParameters = queryStringParameters.toSeq.sortBy(_._1).toMap
 
     if (incomingRequest.method.isEmpty) {
@@ -80,21 +79,22 @@ class ProxyController @Inject()(ws: WSClient, configuration: Configuration) exte
 
     def clock(): LocalDateTime = LocalDateTime.now(ZoneId.of("UTC"))
 
-    // todo remove mention of ES in here
-    // todo document "relative path" portion here
-    val allSignedHeaders = AwsSigner(awsCredentialsProvider,
+    // TODO: Document "relative path" portion here
+    val allSignedHeaders = AwsSigner(
+      awsCredentialsProvider,
       configuration.getString("proxy.aws.region").get,
-      configuration.getString("proxy.aws.service").get, clock
-        ).getSignedHeaders(
-          Uri.parse(incomingRequest.path).toString(signingEncodingConfig), // todo move this encoding logic to the signing plugin
-          incomingRequest.method,
-          sortedQueryStringParameters,
-          outgoingRequest.headers.map {
-            // todo clobber headers with multiple values
-            case (key, values) => (key, values.head)
-          },
-          maybeBody.map(_.toArray)
-        )
+      configuration.getString("proxy.aws.service").get,
+      clock
+    ).getSignedHeaders(
+      Uri.parse(incomingRequest.path).toString(signingEncodingConfig), // TODO: Move this encoding logic to the signing plugin
+      incomingRequest.method,
+      sortedQueryStringParameters,
+      outgoingRequest.headers.map {
+        // TODO: We're clobbering headers with multiple values
+        case (key, values) => (key, values.head)
+      },
+      maybeBody.map(_.toArray)
+    )
 
     val newHeaders = allSignedHeaders -- outgoingRequest.headers.keys
     outgoingRequest.withHeaders(newHeaders.toSeq: _*)
@@ -121,7 +121,9 @@ class ProxyController @Inject()(ws: WSClient, configuration: Configuration) exte
 
         val status = Status(response.status)
 
-        val contentType = response.headers.get("Content-Type").flatMap(_.headOption)
+        val contentType = response.headers
+            .get("Content-Type")
+            .flatMap(_.headOption)
             .getOrElse("application/octet-stream")
 
         // if there's a content length, send that, otherwise return the body in chunks
