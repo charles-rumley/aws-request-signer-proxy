@@ -3,7 +3,7 @@ package controllers
 import java.time.{LocalDateTime, ZoneId}
 import javax.inject._
 
-import com.amazonaws.auth.{AWSStaticCredentialsProvider, BasicAWSCredentials}
+import com.amazonaws.auth.{AWSStaticCredentialsProvider, BasicAWSCredentials, DefaultAWSCredentialsProviderChain}
 import io.ticofab.AwsSigner
 import play.api.http.HttpEntity
 import play.api.libs.ws._
@@ -16,18 +16,18 @@ import com.netaporter.uri.encoding._
 import play.api.Configuration
 
 @Singleton
-class ProxyController @Inject()(ws: WSClient, config: Configuration) extends Controller {
-
+class ProxyController @Inject()(ws: WSClient, configuration: Configuration) extends Controller {
 
   def any(path: String) = Action.async(parse.raw) { implicit request =>
     streamResponse(proxyRequest(request))
   }
 
   private def proxyRequest(incomingRequest: Request[RawBuffer]) = {
+    val esDomain = Uri.parse(configuration.getString("proxy.aws.serviceDomain").get)
     // we must encode asterisks in paths when we sign the requests
     val signingEncodingConfig = UriConfig(encoder = percentEncode ++ '*')
 
-    val serviceDomain = Uri.parse(config.getString("signer.url").get)
+    val serviceDomain = Uri.parse(configuration.getString("signer.url").get)
     val queryStringParams = incomingRequest.queryString.map {
       // todo be careful, I may be erasing important data here
       case (key, values) => (key, values.head)
@@ -79,16 +79,14 @@ class ProxyController @Inject()(ws: WSClient, config: Configuration) extends Con
       throw new Exception("A method must be provided before signing the request!")
     }
 
-    val awsCredentialProvider = new AWSStaticCredentialsProvider(
-      new BasicAWSCredentials("", "")
-    )
-
     def clock(): LocalDateTime = LocalDateTime.now(ZoneId.of("UTC"))
 
     // todo remove mention of ES in here
     // todo document "relative path" portion here
-    val allSignedHeaders = AwsSigner(awsCredentialProvider, "us-east-1", "es", clock)
-        .getSignedHeaders(
+    val allSignedHeaders = AwsSigner(awsCredentialsProvider,
+      configuration.getString("proxy.aws.region").get,
+      configuration.getString("proxy.aws.service").get, clock
+        ).getSignedHeaders(
           Uri.parse(incomingRequest.path).toString(signingEncodingConfig), // todo move this encoding logic to the signing plugin
           incomingRequest.method,
           sortedQueryStringParameters,
@@ -101,6 +99,21 @@ class ProxyController @Inject()(ws: WSClient, config: Configuration) extends Con
 
     val newHeaders = allSignedHeaders -- outgoingRequest.headers.keys
     outgoingRequest.withHeaders(newHeaders.toSeq: _*)
+  }
+
+  private def awsCredentialsProvider = {
+    (configuration.getString("proxy.aws.accessKey"), configuration.getString("proxy.aws.secretkey")) match {
+      // use the credentials specified in configuration if they exist
+      case (Some(accessKey), Some(secretKey)) => new AWSStaticCredentialsProvider(
+        new BasicAWSCredentials(
+          accessKey,
+          secretKey
+        )
+      )
+
+      // allow the AWS SDK to retrieve the credentials from the environment
+      case _ => new DefaultAWSCredentialsProviderChain
+    }
   }
 
   private def streamResponse(request: WSRequest) = {

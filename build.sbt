@@ -10,7 +10,7 @@ scalaVersion := "2.11.11"
 resolvers += Resolver.jcenterRepo
 
 libraryDependencies += "com.amazonaws" % "aws-java-sdk" % "1.11.136"
-libraryDependencies += "io.ticofab" % "aws-request-signer_2.11" % "0.3.0"
+libraryDependencies += "io.ticofab" %% "aws-request-signer" % "0.5.1"
 libraryDependencies += "com.netaporter" %% "scala-uri" % "0.4.16"
 
 libraryDependencies += filters
