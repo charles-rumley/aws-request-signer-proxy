@@ -73,10 +73,6 @@ class ProxyController @Inject()(ws: WSClient, configuration: Configuration) exte
     // TODO: Combine this ordering with the ordering above
     val sortedQueryStringParameters = queryStringParameters.toSeq.sortBy(_._1).toMap
 
-    if (incomingRequest.method.isEmpty) {
-      throw new Exception("A method must be provided before signing the request!")
-    }
-
     def clock(): LocalDateTime = LocalDateTime.now(ZoneId.of("UTC"))
 
     // TODO: Document "relative path" portion here
