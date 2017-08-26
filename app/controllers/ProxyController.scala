@@ -23,11 +23,9 @@ class ProxyController @Inject()(ws: WSClient, configuration: Configuration) exte
   }
 
   private def proxyRequest(incomingRequest: Request[RawBuffer]) = {
-    val esDomain = Uri.parse(configuration.getString("proxy.aws.serviceDomain").get)
     // we must encode asterisks in paths when we sign the requests
     val signingEncodingConfig = UriConfig(encoder = percentEncode ++ '*')
 
-    val serviceDomain = Uri.parse(configuration.getString("signer.url").get)
     val queryStringParams = incomingRequest.queryString.map {
       // todo be careful, I may be erasing important data here
       case (key, values) => (key, values.head)
@@ -48,6 +46,7 @@ class ProxyController @Inject()(ws: WSClient, configuration: Configuration) exte
       case None => EmptyBody
     }
 
+    val serviceDomain = Uri.parse(configuration.getString("proxy.aws.serviceDomain").get)
     val maybeUrl = for {
       scheme <- serviceDomain.scheme
       host <- serviceDomain.host
