@@ -23,18 +23,20 @@ class ProxyController @Inject()(ws: WSClient, configuration: Configuration) exte
   }
 
   private def proxyRequest(incomingRequest: Request[RawBuffer]) = {
-    // we must encode asterisks in paths when we sign the requests
-    val signingEncodingConfig = UriConfig(encoder = percentEncode ++ '*')
 
     val queryStringParams = incomingRequest.queryString.map {
       // TODO: Review loss of multiple query string values caused by .head
       case (key, values) => (key, values.head)
     }.toSeq.sortBy(_._1)
 
-    // TODO: we must override the Host header
-    // TODO: figure out why I can't have Accept-Encoding
-    val acceptableHeaders = incomingRequest.headers.headers.filterNot {
-      case (k, _) => Seq("Host", "Accept-Encoding").contains(k)
+    // remove headers we don't want to sign and send to AWS
+    val filteredHeaders = incomingRequest.headers.headers.filterNot {
+      // we need to override the Host header
+      case ("Host", _) => false
+      // AWS doesn't seem to like when we include the Accept-Encoding header, not sure why yet
+      case ("Accept-Encoding", _) => false
+      // allow all other headers
+      case _ => true
     }
 
     // store max 1024 KB in memory todo review this limit
@@ -62,38 +64,71 @@ class ProxyController @Inject()(ws: WSClient, configuration: Configuration) exte
     val outgoingRequest = ws
         .url(maybeUrl.get)
         .withMethod(incomingRequest.method)
-        .withHeaders(acceptableHeaders: _*)
+        .withHeaders(filteredHeaders: _*)
         .withHeaders("Host" -> serviceDomain.host.get)
         .withQueryString(queryStringParams: _*)
         .withBody(body)
 
-    // drop query string params with multiple values
-    val queryStringParameters = incomingRequest.queryString.mapValues(_.headOption.getOrElse(""))
+    // TODO: Document "relative path" portion here
+    val allSignedHeaders = generateSignedHeaders(
+      incomingRequest.path,
+      incomingRequest.method,
+      incomingRequest.queryString,
+      outgoingRequest.headers,
+      maybeBody.map(_.toArray)
+    )
+
+    val onlyNewHeaders = allSignedHeaders -- outgoingRequest.headers.keys
+    outgoingRequest.withHeaders(onlyNewHeaders.toSeq: _*)
+  }
+
+  /**
+    * Generate AWS signed headers
+    *
+    * @param uri URL of incoming request
+    * @param method HTTP method of incoming request
+    * @param queryParameters Query parameters of incoming request
+    * @param headers Headers of incoming request
+    * @param payload Payload of incoming request
+    * @return All headers, including new headers containing signing details
+    */
+  private def generateSignedHeaders(
+    uri: String,
+    method: String,
+    queryParameters: Map[String, Seq[String]],
+    headers: Map[String, Seq[String]],
+    payload: Option[Array[Byte]]
+  ) = {
+    def clock(): LocalDateTime = LocalDateTime.now(ZoneId.of("UTC"))
+
+    // we must encode asterisks in paths when we sign the requests
+    // see https://github.com/ticofab/aws-request-signer/issues/17
+    // for a good explanation of the need for this behavior
+    val signingEncodingConfig = UriConfig(encoder = percentEncode ++ '*')
+    val correctlyEncodedUri = Uri.parse(uri).toString(signingEncodingConfig) // TODO: Move this encoding logic to the signing plugin
+
+    // take only the first value of each query string parameter
+    val queryStringParameters = queryParameters.mapValues(_.headOption.getOrElse(""))
     // TODO: Don't like this map->seq->map conversion
     // TODO: Combine this ordering with the ordering above
     val sortedQueryStringParameters = queryStringParameters.toSeq.sortBy(_._1).toMap
 
-    def clock(): LocalDateTime = LocalDateTime.now(ZoneId.of("UTC"))
-
-    // TODO: Document "relative path" portion here
-    val allSignedHeaders = AwsSigner(
+    AwsSigner(
       awsCredentialsProvider,
       configuration.getString("proxy.aws.region").get,
       configuration.getString("proxy.aws.service").get,
       clock
     ).getSignedHeaders(
-      Uri.parse(incomingRequest.path).toString(signingEncodingConfig), // TODO: Move this encoding logic to the signing plugin
-      incomingRequest.method,
+      correctlyEncodedUri,
+      method,
       sortedQueryStringParameters,
-      outgoingRequest.headers.map {
+      headers.map {
+        // take only the first value of each header
         // TODO: We're clobbering headers with multiple values
         case (key, values) => (key, values.head)
       },
-      maybeBody.map(_.toArray)
+      payload
     )
-
-    val newHeaders = allSignedHeaders -- outgoingRequest.headers.keys
-    outgoingRequest.withHeaders(newHeaders.toSeq: _*)
   }
 
   private def awsCredentialsProvider = {
