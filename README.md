@@ -15,10 +15,26 @@ Under the hood, this is a Play app on Scala, implementing [`aws-request-signer`]
 
 ## Usage
 
+This application requires the following parameters, they may be specified as environment variables, or added directly
+to `application.conf``.
+
+    # AWS service where authenticated requests will be sent
+    PROXY_SERVICE={es, s3, ec2, sqs, ses, cloudsearch...}
+
+    # Domain of AWS service where authenticated requests will be sent
+    PROXY_SERVICE_DOMAIN=https://service-url.com
+
+    # AWS region of AWS service
+    PROXY_AWS_REGION=us-east-1
+
+    # IAM credentials of user making requests
+    # optional, will be pulled from environment if not specified
+    PROXY_AWS_ACCESS_KEY=access-key
+    PROXY_AWS_SECRET_KEY=secret-key
+
 ### Docker Compose
 
-Example of using this application with Docker Compose. Place into a file named `docker-compose.yml`, then 
-run `docker-compose up`.
+Place into a file named `docker-compose.yml`, then run `docker-compose up`.
     
     version: '3'
     services:
@@ -28,6 +44,7 @@ run `docker-compose up`.
          - "80:9000"
         environment:
           # required
+          - PROXY_SERVICE={es, s3, ec2, sqs, ses, cloudsearch...}
           - PROXY_SERVICE_DOMAIN=https://service-url.com/
           - PROXY_AWS_REGION=us-east-1
     
