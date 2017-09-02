@@ -10,6 +10,12 @@ TDOO
 
 TODO
 
+## Contributing
+
+Push new versions of this application to Docker by calling
+
+    sbt docker:publish 
+
 ## License
 
 TODO

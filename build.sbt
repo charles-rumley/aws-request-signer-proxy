@@ -1,7 +1,15 @@
-name := "aws-signed-request-proxy"
+name := "aws-request-signer-proxy"
 organization := "com.charlesrumley"
 
-version := "1.0-SNAPSHOT"
+version := "0.1"
+
+maintainer in Docker := "charles.rumley@gmail.com"
+dockerRepository := Some("docker.io/charlesrumley")
+
+// open a port for Play
+dockerExposedPorts := Seq(9000)
+
+enablePlugins(JavaAppPackaging)
 
 lazy val root = (project in file(".")).enablePlugins(PlayScala)
 
