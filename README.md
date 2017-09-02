@@ -32,9 +32,25 @@ to `application.conf``.
     PROXY_AWS_ACCESS_KEY=access-key
     PROXY_AWS_SECRET_KEY=secret-key
 
+### Docker
+
+You can spin up a Docker container for the proxy by modifying the following command with your settings:
+
+     docker run \
+         -e PROXY_SERVICE=es \
+         -e PROXY_SERVICE_DOMAIN=https://service-url.com \
+         -e PROXY_AWS_REGION=us-east-1 \
+         -e PROXY_AWS_ACCESS_KEY=access-key \
+         -e PROXY_AWS_SECRET_KEY=secret-key \
+         -p 80:9000 \
+         charlesrumley/aws-request-signer-proxy:latest
+         
+By default, requests made to `localhost:80` will be proxied.
+
 ### Docker Compose
 
-Place into a file named `docker-compose.yml`, then run `docker-compose up`.
+Or you may use Docker Compose. The following configuration may be placed into a file like `docker-compose.yml` and
+modified with your configuration.
     
     version: '3'
     services:
@@ -51,6 +67,8 @@ Place into a file named `docker-compose.yml`, then run `docker-compose up`.
           # optional, will be pulled from environment if not specified
           - PROXY_AWS_ACCESS_KEY=access-key
           - PROXY_AWS_SECRET_KEY=secret-key 
+          
+By default, requests made to `localhost:80` will be proxied.
 
 ## Dependencies
 
