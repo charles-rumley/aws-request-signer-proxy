@@ -17,7 +17,8 @@ Under the hood, this is a Play app on Scala, implementing [`aws-request-signer`]
 
 ### Docker Compose
 
-Example of using this application with Docker Compose
+Example of using this application with Docker Compose. Place into a file named `docker-compose.yml`, then 
+run `docker-compose up`.
     
     version: '3'
     services:
