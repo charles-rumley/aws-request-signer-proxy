@@ -5,6 +5,7 @@ version := "0.1"
 
 maintainer in Docker := "charles.rumley@gmail.com"
 dockerRepository := Some("docker.io/charlesrumley")
+dockerUpdateLatest := true
 
 // open a port for Play
 dockerExposedPorts := Seq(9000)
