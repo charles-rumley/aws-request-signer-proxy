@@ -16,7 +16,7 @@ Under the hood, this is a Play app on Scala, implementing [`aws-request-signer`]
 ## Usage
 
 This application requires the following parameters, they may be specified as environment variables, or added directly
-to `application.conf``.
+to `application.conf`.
 
     # AWS service where authenticated requests will be sent
     PROXY_SERVICE={es, s3, ec2, sqs, ses, cloudsearch...}
